@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>OpenStreetMap + Firebase Realtime</title>
+    <meta charset="utf-8" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+    <script>
+      const firebaseURL = "https://navigasyon-ffc0c-default-rtdb.firebaseio.com/locations.json";
+
+      let map;
+      let markers = {}; // Firebase'deki markerları takip etmek için obje
+      let selectedMarker = null; // Seçilen marker'ı saklamak için değişken
+
+      function initMap() {
+        map = L.map("map").setView([39.92, 32.85], 6); // Türkiye merkezli başlat
+
+        // OpenStreetMap katmanı ekle
+        L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+          attribution: "© OpenStreetMap contributors",
+        }).addTo(map);
+
+        // Firebase'deki verileri al
+        fetchLocations();
+      }
+
+      function fetchLocations() {
+        fetch(firebaseURL)
+          .then((response) => response.json())
+          .then((data) => {
+            if (data) {
+              Object.keys(data).forEach((key) => {
+                let latitude = data[key].latitude;
+                let longitude = data[key].longitude;
+                let type = data[key].type;
+
+                if (!markers[key]) {
+                  let iconURL =
+                    type === "erzak"
+                      ? "https://cdn-icons-png.flaticon.com/512/1046/1046784.png"
+                      : "https://cdn-icons-png.flaticon.com/128/13365/13365621.png";
+
+                  let iconHTML = `
+                    <div style="
+                      position: relative;
+                      width: 40px;
+                      height: 40px;
+                    ">
+                      <div style="
+                        position: absolute;
+                        z-index: 10;
+                        background-color: ${type === "erzak" ? "red" : "blue"};
+                        color: white;
+                        padding: 5px;
+                        border-radius: 50%;
+                        text-align: center;
+                        font-size: 12px;
+                        font-weight: bold;
+                        width: 40px;
+                        height: 40px;
+                        display: flex;
+                        align-items: center;
+                        justify-content: center;
+                      ">
+                        <img src="${iconURL}" width="25" height="25" style="vertical-align: middle;">
+                      </div>
+                    </div>
+                  `;
+
+                  let customIcon = L.divIcon({
+                    className: "custom-marker",
+                    html: iconHTML,
+                    iconSize: [40, 40],
+                    iconAnchor: [20, 40],
+                  });
+
+                  let marker = L.marker([latitude, longitude], { icon: customIcon })
+                    .addTo(map)
+                    .bindPopup(`<b>Tür:</b> ${type}<br>Konum: ${latitude}, ${longitude}`);
+
+                  // ✅ Marker'a tıklanınca koordinatları al ve değişkene kaydet
+                  // ✅ Marker'a tıklanınca koordinatları al, değişkene kaydet ve Thunkable'a bildir
+                  marker.on("click", function () {
+                    selectedMarker = { key, latitude, longitude };
+                    console.log("Seçilen marker:", selectedMarker);
+                  
+                    // 🔥 Thunkable ile haberleşme
+                    window.location.href = `thunkable://delete-marker?key=${key}&lat=${latitude}&lon=${longitude}`;
+                  });
+
+
+                  markers[key] = marker;
+                }
+              });
+            }
+          })
+          .catch((error) => console.error("Firebase verisi alınamadı:", error));
+      }
+
+      // ✅ Seçili marker'ı Firebase'den sil
+      function deleteSelectedMarker() {
+        if (selectedMarker) {
+          let deleteURL = `https://navigasyon-ffc0c-default-rtdb.firebaseio.com/locations/${selectedMarker.key}.json`;
+
+          fetch(deleteURL, {
+            method: "DELETE",
+          })
+            .then(() => {
+              console.log("Marker silindi:", selectedMarker);
+              if (markers[selectedMarker.key]) {
+                map.removeLayer(markers[selectedMarker.key]); // Haritadan da kaldır
+                delete markers[selectedMarker.key]; // Obje listesinden çıkar
+              }
+              selectedMarker = null; // Seçili marker sıfırla
+            })
+            .catch((error) => console.error("Marker silinemedi:", error));
+        } else {
+          console.log("Silmek için önce bir marker seçmelisin!");
+        }
+      }
+    </script>
+    <style>
+      #map {
+        height: 500px;
+        width: 100%;
+      }
+    </style>
+  </head>
+  <body onload="initMap()">
+    <h1>OpenStreetMap + Firebase Realtime</h1>
+    <div id="map"></div>
+    <button onclick="deleteSelectedMarker()">Seçili Marker’ı Sil</button>
+  </body>
+</html>
